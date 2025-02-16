@@ -1,0 +1,14 @@
+**/.DS_Store
+**/__pycache__
+__pycache__/
+tmp/*
+build/*
+dist/*
+src/Speech2Text.egg-info/*
+*.log
+*.lock
+venv*/*
+.venv/*
+arm/*
+x86/*
+bin/*
