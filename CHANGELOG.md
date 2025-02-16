@@ -9,6 +9,6 @@
 - Improved `stream_emitter.py`. Escape characters are removed now.
 - Disabled faster-whisper on Intel Macs.
 - Updated instructions for [uv](https://github.com/astral-sh/uv).
-- [PtQt] updated to v6.8.1.
-- [mlx] updated to v0.23.0. Improved speed!
+- **PyQt** updated to v6.8.1.
+- **mlx** updated to v0.23.0. Improved speed!
 - Source code available on github.
