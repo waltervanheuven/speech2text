@@ -135,28 +135,25 @@ class Worker(QThread):
             msg = f"Starting {task}...\n"
             self.output.emit(msg)
             logging.info(msg)
-
             result = None
             if self.data.model is not None:
                 # see https://github.com/openai/whisper/blob/main/whisper/transcribe.py
-                options = dict(
+                options_dict = dict(
+                    task =task.lower(),
                     language = self.data.language,
-                    temperature = (0, 0.2, 0.4, 0.6, 0.8, 1),
                     beam_size = 5, # default 5
                     best_of = 5,   # default 5
-                    no_speech_threshold = 0.6, # default 0.6
-                    condition_on_previous_text = True, # default True    
                     compression_ratio_threshold = 2.4, # default 2.4, lower might help with repetition
                     fp16 = self.data.fp16
                 )
-                torch.set_num_threads(4)
-
-                options_dict = dict(task=task, **options)
                 with contextlib.redirect_stdout(self.stdout), contextlib.redirect_stderr(self.stderr):
                     result = self.data.model.transcribe(
                                     self.data.filename,
-                                    **options_dict,
-                                    verbose=True
+                                    verbose=True,
+                                    temperature = (0, 0.2, 0.4, 0.6, 0.8, 1),
+                                    no_speech_threshold = 0.6, # default 0.6
+                                    condition_on_previous_text = True, # default True
+                                    **options_dict
                                 )
             else:
                 logging.error("Whisper model not available")
@@ -191,9 +188,7 @@ class WhisperEngine():
 
         if not converted and not already_exist and not err:
             # remove extension for outputfilename
-            the_folder, new_outputfilename = app_utils.split_path_file(filename)
-            if "." in new_outputfilename:
-                new_outputfilename = new_outputfilename.split(".")[0]
+            the_folder, new_outputfilename, _ = app_utils.split_path_file(filename)
             new_outputfilename = os.path.join(the_folder, new_outputfilename)
 
             self.continue_processing(output_folder, filename, outputfilename, name, output_file_extension, mime)
@@ -213,7 +208,7 @@ class WhisperEngine():
         if device == "cpu":
             fp16 = False
 
-        language = self.settings.value("Settings/Language")
+        language = app_utils.lang_to_code(self.settings.value("Settings/Language"))
         if language.lower() == "auto":
             # auto detect language
             language = None
@@ -237,9 +232,9 @@ class WhisperEngine():
         data = WhisperData(
             model_str=model_str,
             device=device,
-            fp16=fp16,        
+            fp16=fp16,
             model_dir_fpath=model_dir_fpath,
-            task=self.settings.value("Settings/Task").lower(),
+            task=self.settings.value("Settings/Task"),
             model=None,
             filename=filename,
             language=language,

@@ -133,7 +133,7 @@ class SettingsDialog(QDialog):
         else:
             self.checkbox_cpp_cuda = QCheckBox("Use CUDA")
             self.checkbox_cpp_cuda.setToolTip("Use CUDA on supported GPUs")
-            self.checkbox_cpp_cuda.setEnabled(True)
+            self.checkbox_cpp_cuda.setEnabled(app_utils.cuda_available())
             box_layout_whisper_cpp.addWidget(self.checkbox_cpp_cuda, Qt.AlignmentFlag.AlignLeft)
 
             w2.setLayout(box_layout_whisper_cpp)
@@ -514,7 +514,7 @@ class SettingsDialog(QDialog):
             self.model_label_fw.setEnabled(status)
             self.comboModel_fw.setEnabled(status)
             if app_utils.cuda_available() and self.checkbox_fw_cuda is not None:
-                self.checkbox_fw_cuda.setEnabled(status)     
+                self.checkbox_fw_cuda.setEnabled(status)
         elif radioStr == "whisper.asr":
             self.asr_url_label.setEnabled(status)
             self.asr_url_line_edit.setEnabled(status)

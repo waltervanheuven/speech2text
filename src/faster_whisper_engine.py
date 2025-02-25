@@ -22,7 +22,7 @@ class FasterWhisperData(BaseModel):
     device: str
     filename: str
     task: str
-    language: str | None
+    language: str | None = None
     ssafile: pysubs2.SSAFile | None
     outputfilename: str
     result: list[str] | None
@@ -92,8 +92,7 @@ class Worker(QThread):
                                     self.data.model_str,
                                     output_dir=selected_model_path
                                 )
-
-            except ValueError:
+            except ValueError as e:
                 msg = f"ValueError: {e}"
                 logging.exception(msg)
                 err = True
@@ -134,18 +133,16 @@ class Worker(QThread):
                         cpu_threads=4,
                         num_workers=1
                     )
-
                 # generator, so iterate
                 segments, transcription_info = model.transcribe(
                                 self.data.filename,
-                                task=self.data.task,
+                                task=self.data.task.lower(),
                                 beam_size=5, # default
                                 best_of=5,   # default
                                 patience=1,  # default
                                 language=self.data.language,
                                 condition_on_previous_text=True # default
                             )
-
             result = []
             for segment in segments:
                 if self.isInterruptionRequested():
@@ -189,12 +186,10 @@ class FasterWhisperEngine():
         self.settings = self.mainWindow.settings
         self.worker = None
 
-    def run(self, output_folder: str, filename: str, outputfilename: str, name: str, output_file_extension: str, mime: str) -> None:
+    def run(self, filename: str, outputfilename: str) -> None:
         """
         Use faster-whisper
         https://github.com/guillaumekln/faster-whisper
-
-        Does not provide subtitle output. Also, language cannot be set (default is auto)
         """
         # language
         language = app_utils.lang_to_code(self.settings.value("Settings/Language"))
@@ -209,7 +204,7 @@ class FasterWhisperEngine():
 
         # task
         # note that faster-whisper can only transcribe audio
-        task = self.settings.value("Settings/Task").lower()
+        task = self.settings.value("Settings/Task")
 
         # model_str
         model_str = self.settings.value("Settings/FW_model")
@@ -233,7 +228,8 @@ class FasterWhisperEngine():
         logging.info(msg)
 
         logging.debug("Running faster-whisper task: %s", task)
-        logging.debug("FILENAME AUDIO FILE %s", filename)
+        logging.debug("filename %s", filename)
+        logging.debug("outputfilename %s", outputfilename)
 
         data = FasterWhisperData(
             model_dir_fpath=model_dir_fpath,

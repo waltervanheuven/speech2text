@@ -36,7 +36,7 @@ class WhisperCPPData(BaseModel):
     file_folder: str
     threads: PositiveInt = 4
     text_output_format: str
-    language: str
+    language: str = "auto"
     options_str: str
     err: bool = False
     error_message: str = ""
@@ -386,7 +386,7 @@ class WhisperCPPEngine():
         self.settings = self.mainWindow.settings
         self.worker: Worker = None
 
-    def run(self, filename: str, outputfilename: str, name: str, output_file_extension: str) -> None:
+    def run(self, filename: str, output_file_extension: str) -> None:
         """
         Using whisper.cpp
         https://github.com/ggerganov/whisper.cpp
@@ -401,12 +401,11 @@ class WhisperCPPEngine():
 
         if not converted and not already_exist and not err:
             # remove extension for outputfilename
-            the_folder, new_outputfilename = app_utils.split_path_file(filename)
-            new_outputfilename = Path(new_outputfilename).stem
-            new_outputfilename = os.path.join(the_folder, new_outputfilename)
+            the_folder, the_basename, _ = app_utils.split_path_file(filename)
+            new_outputfilename = os.path.join(the_folder, the_basename)
 
             # continue with converting
-            self.continue_processing(filename, new_outputfilename, name, task_str, output_file_extension)
+            self.continue_processing(filename, new_outputfilename, task_str, output_file_extension)
 
         elif already_exist and not err:
             logging.debug("File %s already exists and already added to queue", fpath)
@@ -415,12 +414,12 @@ class WhisperCPPEngine():
             logging.error("An error occurred while trying to convert audio file")
             self.mainWindow.finished_processing(filename, err)
 
-    def continue_processing(self, filename: str, outputfilename: str, name: str, task_str: str, output_file_extension: str) -> None:
+    def continue_processing(self, filename: str, outputfilename: str, task_str: str, output_file_extension: str) -> None:
         err: bool = False
         msg: str
         text_output_format: str
 
-        file_folder, the_filename = app_utils.split_path_file(filename)
+        file_folder, the_filename, _ = app_utils.split_path_file(filename)
 
         threads:int
         try:

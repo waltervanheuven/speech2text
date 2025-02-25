@@ -9,6 +9,7 @@ import validators
 from pydantic import BaseModel, ConfigDict
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget, QHBoxLayout
+import utils as app_utils
 
 class WhisperWebserviceData(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -107,11 +108,11 @@ class WhisperWebserviceEngine():
         # remove . from output extension
         output = output_file_extension.replace(".", "")
 
-        language = str(self.mainWindow.form_widget.comboLanguage.currentText())
-        if language.lower() == "auto detect":
+        language = app_utils.lang_to_code(self.settings.value("Settings/Language"))
+        if language.lower() == "auto":
             language = None
 
-        task = str(self.mainWindow.form_widget.comboTask.currentText()).lower()
+        task:str = self.settings.value("Settings/Task")
 
         params = {
             'task': task,

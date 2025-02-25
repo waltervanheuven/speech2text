@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 22 February 2025 - version 2.3.1
+
+- Fixed file conversion to wav. Now possible to convert audio/video formats without the need to install FFmpeg.
+- Fixed task bug in mlx-whisper.
+- Fixed language in whisper engines.
+- **MLX** updated to v0.23.1.
+
 ## 16 February 2025 - version 2.3.0
 
 - Improved stability (fixed issue with QThreads).

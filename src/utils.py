@@ -10,7 +10,10 @@ import shutil
 import platform
 import hashlib
 import logging
+import pathlib
 import wave
+import av
+from av.audio.format import AudioFormat
 import psutil
 import puremagic
 from iso639 import Lang
@@ -28,12 +31,6 @@ def cuda_available() -> bool:
 def modified_environ(*remove, **update):
     """
     Temporarily updates the ``os.environ`` dictionary in-place.
-
-    The ``os.environ`` dictionary is updated in-place so that the modification
-    is sure to work in all situations.
-
-    :param remove: Environment variables to remove.
-    :param update: Dictionary of environment variables and values to add/update.
     """
     env = os.environ
     update = update or {}
@@ -56,15 +53,18 @@ def modified_environ(*remove, **update):
 
 # based on https://www.debugpointer.com/python/create-sha256-hash-of-a-file-in-python
 def compute_sha(file_name: str) -> None:
-    """ compute sha256 hash of file """
+    """ Compute sha256 hash of file """
     hash_sha = hashlib.sha1()
     with open(file_name, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_sha.update(chunk)
     return hash_sha.hexdigest()
 
-def split_path_file(complete_file_path: str) -> tuple[str, str]:
-    return os.path.dirname(complete_file_path), os.path.basename(complete_file_path)
+def split_path_file(complete_file_path: str) -> list[str]:
+    """ Return dirname, file name and extension """
+    file_name: str = pathlib.Path(complete_file_path).stem
+    file_extension: str = pathlib.Path(complete_file_path).suffix # e.g. ".wav"
+    return [os.path.dirname(complete_file_path), file_name, file_extension]
 
 def is_program_installed(program_name: str) -> bool:
     return shutil.which(program_name)
@@ -106,29 +106,34 @@ def check_acceptable_file(
     return ok
 
 def correct_wav_file(fpath: str) -> tuple[bool, bool]:
-    """ check whether audio file is 16kHz """
-    err:bool = False
-    ok_format:bool = False
+    """Check whether the audio file at fpath is 16kHz, 16-bit. """
+    err: bool = False
+    ok_format: bool = False
+    sample_rate: int = 0
+    sample_width: int = 0
 
-    sample_rate:int = 0
-    sample_width:int = 0
-
-    # if wav file check appropriate format
-    logging.debug("Check sample rate of: %s", fpath)
-
+    logging.debug("Checking audio file: %s", fpath)
     try:
-        with wave.open(fpath, 'rb') as wf:
-            sample_rate = wf.getframerate()
-            sample_width = wf.getsampwidth()
-    except wave.Error:
-        logging.exception("Wave error")
-        err = True
-    else:
-        logging.debug("wav file, sample_rate: %d Hz, sample_width: %d", sample_rate, sample_width)
+        container = av.open(fpath)
+        audio_stream = next((s for s in container.streams if s.type == 'audio'), None)
 
-    if sample_rate == 16000 and sample_width == 2:
-        ok_format = True
-        logging.debug("Format wav ok")
+        if audio_stream is None:
+            logging.error("No audio stream found in file: %s", fpath)
+            err = True
+        else:
+            sample_rate = audio_stream.rate
+            sample_format = AudioFormat(audio_stream.format.name)
+            sample_width = sample_format.bytes
+
+            logging.debug("Audio file properties -- sample_rate: %d Hz, sample_width: %d bytes", sample_rate, sample_width)
+
+            if sample_rate == 16000 and sample_width == 2:
+                ok_format = True
+                logging.debug("Audio format is valid (16kHz, 16-bit).")
+
+    except Exception as e:
+        logging.exception("Error reading audio file: %s", e)
+        err = True
 
     return ok_format, err
 
@@ -285,8 +290,7 @@ def kill(proc_pid: int):
         logging.exception("OSError")
 
 def get_windows_env():
-    """ get windows ENV and disable how terminal window 
-    
+    """ get windows ENV and disable how terminal window
     returns os._Environ, subprocess.STARTUPINFO
     """
     # https://github.com/pyinstaller/pyinstaller/wiki/Recipe-subprocess

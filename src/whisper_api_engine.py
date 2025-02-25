@@ -18,7 +18,7 @@ class WhisperAPIData(BaseModel):
     audio_file: str = ""
     task_str: str = ""
     response_format: str = ""
-    language: str
+    language: str | None = None
     transcript: dict | None
     outputfilename: str
     err: bool = False
@@ -54,7 +54,7 @@ class Worker(QThread):
             audio_file = open(self.data.audio_file, "rb")
 
             client = self.data.client
-            if self.data.task_str == "transcribe":
+            if self.data.task_str.lower() == "transcribe":
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file,
@@ -124,10 +124,13 @@ class WhisperAPIEngine():
 
         if key != "":
 
-            task_str:str = self.settings.value("Settings/Task").lower()
-            #task_str = "transcribe"
+            task_str:str = self.settings.value("Settings/Task")
+
             response_format:str = self.settings.value("Settings/Output").lower()
-            language:str = app_utils.lang_to_code(self.mainWindow.form_widget.comboLanguage.currentText())
+            language = app_utils.lang_to_code(self.mainWindow.form_widget.comboLanguage.currentText())
+            if language.lower() == "auto":
+                # auto detect language
+                language = None
 
             # check if file does not exceed max length accepted by OpenAI API
             file_size_bytes = os.path.getsize(audio_file)

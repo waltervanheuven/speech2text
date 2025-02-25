@@ -15,6 +15,7 @@ import urllib.parse
 from enum import Enum
 import requests
 import torch
+import av
 from packaging import version
 from PyQt6.QtGui import QDesktopServices, QScreen, QAction, QGuiApplication
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog
@@ -91,10 +92,17 @@ class MainWindow(QMainWindow):
         app_version_ini:str = self.settings.value("Application/version")
         if app_version_ini is None or version.parse(app_version_ini) != version.parse(self.VERSION):
             self.reset_ini_file()
-            self.delete_downloaded_models()
+            self.check_ffmpeg_installed()
+            ffmpeg_fpath:str = self.settings.value("FFmpeg/path")
+            if ffmpeg_fpath == "" and platform.system() == "Darwin" and platform.processor() == "arm":
+                # default for macOS arm is whisper-mlx, however
+                # set default to whisper.cpp if FFmpeg is not installed
+                self.settings.setValue("Engine", "whisper.cpp")
 
-        # check if ffmpeg is installed on the computer
-        self.check_ffmpeg_installed()
+            self.delete_downloaded_models()
+        else:
+            # check if ffmpeg is installed on the computer
+            self.check_ffmpeg_installed()
 
         # init ASR egines
         self.init_asr_engines()
@@ -126,7 +134,7 @@ class MainWindow(QMainWindow):
                 print(self.get_worker_name())
 
             self.stop_processing()
-    
+
     def init_asr_engines(self) -> None:
         """ Init ASR engines """
         self.whispercpp_engine = WhisperCPPEngine(self)
@@ -170,7 +178,7 @@ class MainWindow(QMainWindow):
             # requires toch with cuda libraries
         else:
             self.faster_whisper_engine = FasterWhisperEngine(self)
-            
+
             if self.settings.value("FFmpeg/path") == "":
                 if self.settings.value("Whisper/Engine") == "whisper":
                     self.settings.setValue("Whisper/Engine", "whisper.cpp")
@@ -255,7 +263,7 @@ class MainWindow(QMainWindow):
         else:
             self.settings.setValue("CPP_Metal", "False")
             #self.settings.setValue("CPP_CoreML", "False")
-        
+
         if app_utils.cuda_available():
             self.settings.setValue("CPP_CUDA", "True")
         else:
@@ -557,7 +565,6 @@ class MainWindow(QMainWindow):
         wlist = []
 
         #print(f"Active: {threading.active_count()}")
-
         for t in mythreads:
             wlist.append(t.name)
             logging.debug("thread: %s, number of threads: %d", t.name, len(mythreads))
@@ -615,15 +622,11 @@ class MainWindow(QMainWindow):
             _ = dlg.exec()
 
     def acceptable_extensions(self) -> list[str]:
-        extensions:list[str] = [".wav", ".mp3", ".mp4", ".m4a", ".aiff", ".mpeg", ".mov", ".avi", ".wmv", ".webm"]
+        extensions:list[str] = [".wav", ".mp3", ".mp4", ".m4a", ".aiff", ".ogg", ".flac", ".wma", ".mpeg", ".mov", ".avi", ".wmv", ".webm"]
         ffmpeg_fpath:str = self.settings.value("FFmpeg/path")
         engine:str = self.settings.value("Whisper/Engine")
 
-        if ffmpeg_fpath == "":
-            # ffmpeg not installed
-            if engine == "whisper.cpp":
-                extensions = ['.wav']
-            elif engine == "whisper":
+        if ffmpeg_fpath == "" and engine == "whisper":
                 # requires FFmpeg
                 extensions = []
 
@@ -970,9 +973,10 @@ class MainWindow(QMainWindow):
 
         status_str:str = ""
         for fpath in self.queue():
-            _, the_file = app_utils.split_path_file(fpath)
+            _, the_basename, the_extension = app_utils.split_path_file(fpath)
+            the_file = f"{the_basename}{the_extension}"
             status_str = f"{status_str}<br>- '{the_file}'"
-            #status_str = f"{status_str}<br>- <a href=file:///{fpath}>{the_file}</a>"
+
         status_str = f"{status_str}<br>"
         self.form_widget.feedback(status_str)
 
@@ -1004,14 +1008,15 @@ class MainWindow(QMainWindow):
 
             # first one
             fpath = self.first_in_queue()
-            the_path, the_file = app_utils.split_path_file(fpath)
+            the_path, the_basename, the_extension = app_utils.split_path_file(fpath)
+            the_file = f"{the_basename}{the_extension}"
 
             language = app_utils.lang_to_code(self.settings.value("Settings/Language"))
             if language == "auto":
                 duration:float = app_utils.get_audio_duration(fpath)
                 if duration > 0 and duration < 30:
                     self.form_widget.feedback("Automatically detecting the spoken language requires a clip of 30 seconds or longer. Specify the language of the speech rather than using 'Auto Detect'.\n")
-                    msg = f"Duration of file '{the_file}' is {duration:.2} seconds.\n"
+                    msg = f"Duration of file '{the_file}' is {int(duration)} seconds.\n"
                     self.form_widget.feedback(msg)
                     logging.info(msg)
                     self.STOP = True
@@ -1037,33 +1042,32 @@ class MainWindow(QMainWindow):
                 elif outputSelected == "TEXT":
                     output_file_extension = ".txt"
 
-                name = the_file.split(".")[0]
-                output_filename = os.path.join(the_path, f"{name}{output_file_extension}")
+                output_filename = os.path.join(the_path, f"{the_basename}{output_file_extension}")
 
                 if self.settings.value("Whisper/Engine") == "whisper":
 
-                    self.whisper_engine.run(the_path, fpath, output_filename, name, output_file_extension, mime)
+                    self.whisper_engine.run(the_path, fpath, output_filename, the_basename, output_file_extension, mime)
 
                 elif self.settings.value("Whisper/Engine") == "mlx-whisper":
 
-                    self.mlx_whisper_engine.run(the_path, fpath, output_filename, name, output_file_extension, mime)
+                    self.mlx_whisper_engine.run(the_path, fpath, output_filename, the_basename, output_file_extension, mime)
 
                 elif self.settings.value("Whisper/Engine") == "whisper.cpp":
 
-                    self.whispercpp_engine.run(fpath, output_filename, name, output_file_extension)
+                    self.whispercpp_engine.run(fpath, output_file_extension)
 
                 elif self.settings.value("Whisper/Engine") == "whisper_asr_webservice":
 
-                    self.whisper_webservice_engine.run(fpath, output_filename, name, output_file_extension, mime)
+                    self.whisper_webservice_engine.run(fpath, output_filename, the_basename, output_file_extension, mime)
 
                 elif self.settings.value("Whisper/Engine") == "whisper.api":
 
-                    self.whisper_api_engine.run(fpath, output_filename, name, output_file_extension, mime)
+                    self.whisper_api_engine.run(fpath, output_filename, the_basename, output_file_extension, mime)
 
                 elif self.settings.value("Whisper/Engine") == "faster-whisper":
 
-                    self.faster_whisper_engine.run(the_path, fpath, output_filename, name, output_file_extension, mime)
-
+                    self.faster_whisper_engine.run(fpath, output_filename)
+        
         if self.STOP:
             self.finished_processing("", False, cancelled=True)
 
@@ -1071,13 +1075,11 @@ class MainWindow(QMainWindow):
         err:bool = False
         need_conversion:bool = False
         already_exist:bool = False
-        target_format:str = 'wav'
+        target_format:str = '.wav'
         msg:str
 
-        the_path, the_file = app_utils.split_path_file(fpath)
-        if "." in the_file:
-            the_file = the_file.split(".")[0]
-        out_filename = f"{the_file}.{target_format}"
+        the_path, the_basename, _ = app_utils.split_path_file(fpath)
+        out_filename = f"{the_basename}{target_format}"
         converted_fpath = os.path.join(the_path, out_filename)
 
         if self.settings.value("Whisper/Engine") == "whisper":
@@ -1112,7 +1114,7 @@ class MainWindow(QMainWindow):
                 #self.finished_processing(fpath, err, conversion = True)
         elif self.settings.value("Whisper/Engine") == "whisper.cpp":
             # convert to 'wav'
-            if app_utils.check_acceptable_file(self, fpath, [".wav", ".mp3", ".mp4", ".m4a", ".aiff", ".mpeg", ".mov", ".avi", ".wmv", ".webm"]):
+            if app_utils.check_acceptable_file(self, fpath, [".wav", ".mp3", ".mp4", ".m4a", ".aiff", ".ogg", ".flac", ".wma", ".mpeg", ".mov", ".avi", ".wmv", ".webm"]):
                 if app_utils.check_acceptable_file(self, fpath, [".wav"]):
                     ok_format, err = app_utils.correct_wav_file(fpath)
 
@@ -1142,32 +1144,26 @@ class MainWindow(QMainWindow):
 
         return err, already_exist, need_conversion, converted_fpath
 
-    def convert_input_file_format(self, fpath:str, target_format: str='wav') -> bool:
+    def convert_input_file_format(self, fpath:str, target_format: str='.wav') -> bool:
         err:bool = False
         converted_file_exists:bool = False
         final_out_fpath:str = ""
 
-        the_path, the_file = app_utils.split_path_file(fpath)
-
-        if "." in the_file:
-            the_file = the_file.split(".")[0]
-        out_filename = f"{the_file}.{target_format}"
+        the_path, the_file, _ = app_utils.split_path_file(fpath)
+        out_filename = f"{the_file}{target_format}"
         out_fpath = os.path.join(the_path, out_filename)
 
         if os.path.isfile(out_fpath):
-
             # original file
-            the_path, the_file = app_utils.split_path_file(out_fpath)
-            full_filename:str = the_file
-            if "." in the_file:
-                the_file = the_file.split(".")[0]
+            the_path, the_file, the_extension = app_utils.split_path_file(out_fpath)
+            full_filename = f"{the_file}{the_extension}"
 
             final_out_filename = f"{the_file}.{target_format}"
             final_out_fpath = os.path.join(the_path, out_filename)
 
             # if file already exists add '_converted' to avoid overwriting original file
-            if full_filename == final_out_filename:
-                final_out_filename = f"{the_file}_converted.{target_format}"
+            if full_filename.lower() == final_out_filename.lower():
+                final_out_filename = f"{the_file}_converted{target_format}"
                 final_out_fpath = os.path.join(the_path, final_out_filename)
 
             if os.path.isfile(final_out_fpath):
@@ -1191,42 +1187,36 @@ class MainWindow(QMainWindow):
             is_wav = app_utils.check_acceptable_file(self, fpath, ['.wav'])
             ffmpeg_fpath = self.settings.value("FFmpeg/path")
 
-            if ffmpeg_fpath != "" or is_wav:
-                wav_info:str = ""
-                if target_format == "wav":
-                    wav_info = "(16kHz 16-bit mono)"
+            # convert audio/video file to wav
+            wav_info:str = ""
+            if target_format.lower() == ".wav":
+                wav_info = "(16kHz 16-bit mono)"
 
-                msg = f"Converting file '{the_file}' to '{target_format}' format {wav_info}..."
-                self.form_widget.feedback(msg)
-                logging.info(msg)
+            msg = f"Converting file '{the_file}' to '{target_format}' format {wav_info}..."
+            self.form_widget.feedback(msg)
+            logging.info(msg)
 
-                data = {
-                    'original_file_fpath': fpath,
-                    'ffmpeg_fpath': ffmpeg_fpath,
-                    'target_format': target_format,
-                    'final_file_fpath': "",
-                    'is_wav': is_wav
-                }
+            data = {
+                'original_file_fpath': fpath,
+                'ffmpeg_fpath': ffmpeg_fpath,
+                'target_format': target_format,
+                'final_file_fpath': "",
+                'is_wav': is_wav
+            }
 
-                self.worker = ConvertWorker(data)
-                self.worker.finished.connect(self.handle_finished_convert_worker)
-                self.worker.output.connect(self.feedback)
-                #self.worker.finished.connect(self.worker.deleteLater)
+            self.worker = ConvertWorker(data)
+            self.worker.finished.connect(self.handle_finished_convert_worker)
+            self.worker.output.connect(self.feedback)
+            #self.worker.finished.connect(self.worker.deleteLater)
 
-                self.set_status(Status.CONVERTING)
+            self.set_status(Status.CONVERTING)
 
-                self.form_widget.set_show_progress_element(True)
-                QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            self.form_widget.set_show_progress_element(True)
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
 
-                logging.debug("Starting Convert Worker thread")
-                self.worker.start()
+            logging.debug("Starting Convert Worker thread")
+            self.worker.start()
 
-            else:
-                logging.error("FFmpeg not installed. Unable to convert file to correct 'wav' format (16kHz, 16-bit, mono).")
-                msg = "<html><br><br>Unable to convert file to correct 'wav' format (16kHz, 16-bit, mono) because <a href='https://ffmpeg.org'>FFmpeg</a> is not installed.\
-                       Use, for example, <a href='https://www.audacityteam.org'>Audacity</a> to convert file to 'wav' format (16kHz, 16-bit, mono).</html>"
-                self.form_widget.show_info(msg)
-                err = True
         else:
             logging.info("Converted file already exists.")
             data = {
@@ -1297,7 +1287,9 @@ class MainWindow(QMainWindow):
                         status_str = f"\nStill processing {remaining_files} file:\n"
 
                     for n, fpath in enumerate(self.queue()):
-                        _, the_file = app_utils.split_path_file(fpath)
+                        _, the_basename, the_extension = app_utils.split_path_file(fpath)
+                        the_file = f"{the_basename}{the_extension}"
+
                         if n == 0:
                             status_str = f"{status_str}'{the_file}'"
                         else:
@@ -1331,7 +1323,7 @@ class MainWindow(QMainWindow):
                 msg = f"Error and now reset: {fpath}"
                 logging.info(msg)
                 self.feedback("\nAn error has occurred.")
-            
+
             self.reset_after_err_or_cancelled(err)
 
     def reset_after_err_or_cancelled(self, err:bool=False) -> None:
@@ -1371,7 +1363,7 @@ class MainWindow(QMainWindow):
                 msg = f"Finished processing file(s) in {app_utils.duration_str(duration)} ({time_str})"
             else:
                 msg = f"Finished processing file(s) in {time_str}."
-            
+
             self.form_widget.feedback(f"<br>{msg}")
             logging.info(msg)
 
@@ -1461,15 +1453,16 @@ class MainWindow(QMainWindow):
             if self.mlx_whisper_engine:
                 import mlx_whisper
                 import mlx.core as mx
-                msg = f"{msg}mlx (v{mx.__version__}).<br>"
-                msg = f"{msg}mlx-whisper (v{mlx_whisper.__version__}).<br>"
+                msg = f"{msg}MLX (v{mx.__version__}).<br>"
+                msg = f"{msg}MLX-Whisper (v{mlx_whisper.__version__}).<br>"
 
             # openai api
             if self.whisper_api_engine:
                 import openai
-                msg = f"{msg}openai api (v{openai.version.VERSION}).<br>"
+                msg = f"{msg}OpenAI api (v{openai.version.VERSION}).<br>"
 
-            msg = f"{msg}torch (v{torch.__version__})"
+            msg = f"{msg}PyTorch (v{torch.__version__}).<br>"
+            msg = f"{msg}PyAV (v{av.__version__}).</br>"
 
             if app_utils.cuda_available():
                 msg = f"{msg}<br>CUDA available.<br>"
@@ -1479,12 +1472,10 @@ class MainWindow(QMainWindow):
 
         if ffmpeg_fpath == "":
             msg = f"{msg}<br><br>Please note that <a href='https://ffmpeg.org'>FFmpeg</a> is not installed on this computer. \
-                    FFmpeg is required for OpenAI's whisper and mlx-whisper as well as for converting video/audio files. \
+                    FFmpeg is required for OpenAI's whisper and mlx-whisper. \
                     Install FFmpeg using <a href='https://brew.sh'>brew</a> on macOS \
-                    and <a href='https://scoop.sh'>Scoop</a> or <a href='https://chocolatey.org'>Chocolatey</a> on Windows."
-
-            msg = f"{msg}<br><br>Without FFmpeg, whisper.cpp and can only process 'wav' files. \
-                    FFmpeg is not required for faster-whisper, whisper ASR webservice, and the OpenAI's Whisper API."
+                    and <a href='https://scoop.sh'>Scoop</a> or <a href='https://chocolatey.org'>Chocolatey</a> on Windows. \
+                    Other whisper systems and services do not require FFmpeg."
 
         self.form_widget.delete_feedback()
         self.form_widget.show_info(msg)

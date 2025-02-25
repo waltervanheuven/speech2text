@@ -17,7 +17,7 @@ from PyQt6.QtCore import QStandardPaths, Qt
 import utils as app_utils
 import mainwindow
 
-__version__: str = "2.3.0"
+__version__: str = "2.3.1"
 __version_url__: str = 'https://waltervanheuven.net/s2t/version.txt'
 __website_url__: str = "https://waltervanheuven.net/s2t/"
 __author__: str = "Walter van Heuven"

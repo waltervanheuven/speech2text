@@ -7,8 +7,7 @@ import subprocess
 import logging
 import time
 import platform
-import numpy as np
-import soundfile
+import av
 from PyQt6.QtCore import QThread, pyqtSignal
 import utils as app_utils
 
@@ -20,33 +19,22 @@ class ConvertWorker(QThread):
     def __init__(self, data:dict=None) -> None:
         super().__init__()
         self.setObjectName("ConvertWorker")
-
-        self.data = data
-        self.original_file_fpath = data['original_file_fpath']
-        self.ffmpeg_fpath = data['ffmpeg_fpath']
-        self.target_format = data['target_format']
-        self.final_file_fpath = data['final_file_fpath']
-        self.is_wav = data['is_wav']
-        self.exit_flag = False
-        self.err = False
+        self.data:dict = data
+        self.exit_flag:bool = False
+        self.err:bool = False
 
     def run(self) -> None:
-        the_path:str
-        the_file:str
         err: bool = False
 
         # original file
-        the_path, the_file = app_utils.split_path_file(self.original_file_fpath)
-        full_filename:str = the_file
-        if "." in the_file:
-            the_file = the_file.split(".")[0]
+        the_path, the_file_name, _ = app_utils.split_path_file(self.data['original_file_fpath'])
 
-        out_filename:str = f"{the_file}.{self.target_format}"
+        out_filename:str = f"{the_file_name}{self.data['target_format']}"
         out_fpath:str = os.path.join(the_path, out_filename)
 
         # if file already exists add '_converted' to avoid overwriting original file
-        if full_filename == out_filename:
-            out_filename:str = f"{the_file}_converted.{self.target_format}"
+        if the_file_name.lower() == out_filename.lower():
+            out_filename:str = f"{the_file_name}_converted{self.data['target_format']}"
             out_fpath:str = os.path.join(the_path, out_filename)
 
         msg = f"ConvertWorker - script path: {os.getcwd()}"
@@ -54,31 +42,30 @@ class ConvertWorker(QThread):
         msg = f"ConvertWorker - fpath: {out_fpath}"
         logging.debug(msg)
 
-        if self.ffmpeg_fpath != "":
-            err = self.convert_using_ffmpeg(out_fpath)
-        elif self.is_wav:
-            err = self.convert_wav(out_fpath)
-
-        self.data['err'] = err
+        #if self.data['ffmpeg_fpath'] != "":
+        #    self.data['err'] = self.convert_using_ffmpeg(out_fpath)
+        #else:
+        self.data['err'] = self.convert_to_wav(out_fpath)
 
         # emit results
         self.finished.emit(self.data)
 
     def convert_using_ffmpeg(self, out_fpath) -> bool:
+        """ Use FFmpeg to convert file to wav """
         msg:str = ""
         err:bool = False
         p:subprocess.Popen = None
         try:
             tic:float = time.perf_counter()
 
-            if self.target_format == 'mp3':
+            if self.data['target_format'].lower() == '.mp3':
 
                 logging.debug("Converting to mp3")
                 # convert to 128kps and mono mp3 file
                 cmd_list: list[str] = [
-                    self.ffmpeg_fpath,
+                    self.data['ffmpeg_fpath'],
                     "-nostdin",
-                    "-i", self.original_file_fpath,
+                    "-i", self.data['original_file_fpath'],
                     "-f", "mp3",
                     "-ab", "128000", "-ac", "1", "-vn",
                     out_fpath
@@ -105,27 +92,19 @@ class ConvertWorker(QThread):
                 #out, err_out = p.communicate() # wait untill completed
                 _, _ = p.communicate() # wait untill completed
 
-            elif self.target_format == 'wav':
+            elif self.data['target_format'].lower() == '.wav':
 
                 logging.debug("Converting to wav")
                 # for whisper and whisper.cpp
                 # -ar 16000 -ac 1 -c:a pcm_s16le
 
                 cmd_list: list[str] = [
-                    self.ffmpeg_fpath,
+                    self.data['ffmpeg_fpath'],
                     "-nostdin", "-i",
-                    self.original_file_fpath,
+                    self.data['original_file_fpath'],
                     "-f", "wav", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
                     out_fpath
                 ]
-
-                # stereo required for speaker detection
-                #cmd_list: list[str] = [
-                # self.ffmpeg_fpath, "-nostdin", "-i", 
-                # self.original_file_fpath, "-f", "wav", "-ar", "16000", "-c:a", "pcm_s16le", 
-                # out_fpath
-                #]
-
                 if platform.system() == "Windows":
                     env, si = app_utils.get_windows_env()
                     p = subprocess.Popen(
@@ -174,39 +153,57 @@ class ConvertWorker(QThread):
                     self.data['final_file_fpath'] = out_fpath
 
                     logging.info("Completed conversion: new file: %s", out_fpath)
-                    msg = f"Completed '{self.target_format}' conversion ({time_str})."
+                    msg = f"Completed '{self.data['target_format']}' conversion ({time_str})."
                     self.output.emit(msg)
 
         return err
 
-    def convert_wav(self, out_fpath) -> bool:
-        err:bool = False
-
+    def convert_to_wav(self, out_fpath) -> bool:
+        """ Use av to convert audio/video file to wav format required for whisper. """
+        err: bool = False
         new_samplerate = 16000
-        bits = 'PCM_16' # 16 bits
-        try:
-            data, samplerate = soundfile.read(self.original_file_fpath)
-            
-            if len(data.shape) > 1:
-                # convert to mono
-                mono_data = np.mean(data, axis=1)
-            else:
-                mono_data = data
+        target_format = 's16'
+        target_layout = 'mono'
 
-            soundfile.write(out_fpath, mono_data, new_samplerate, subtype=bits)
-        except soundfile.SoundFileError:
+        try:
+            input_container = av.open(self.data['original_file_fpath'])
+            input_audio_stream = next((s for s in input_container.streams if s.type == 'audio'), None)
+            if input_audio_stream is None:
+                raise ValueError("No audio stream found in file")
+
+            output_container = av.open(out_fpath, mode='w')
+            output_stream = output_container.add_stream('pcm_s16le', rate=new_samplerate, layout=target_layout)
+
+            resampler = av.audio.resampler.AudioResampler(
+                format=target_format,
+                layout=target_layout,
+                rate=new_samplerate
+            )
+
+            for packet in input_container.demux(input_audio_stream):
+                for frame in packet.decode():
+                    resampled_frames = resampler.resample(frame)
+                    if not isinstance(resampled_frames, list):
+                        resampled_frames = [resampled_frames]
+
+                    for resampled_frame in resampled_frames:
+                        for out_packet in output_stream.encode(resampled_frame):
+                            output_container.mux(out_packet)
+            
+            for out_packet in output_stream.encode():
+                output_container.mux(out_packet)
+
+            output_container.close()
+            input_container.close()
+            
+        except Exception as exc:
             err = True
-            logging.error("SoundFileError")
-            self.output.emit("SoundFileError")
-        except OSError:
-            err = True
-            logging.error("OSError while converting wav")
-            self.output.emit("OSError while converting wav")
+            logging.exception("Error during conversion: %s", exc)
+            self.output.emit("Error during conversion.")
         finally:
             self.data['final_file_fpath'] = out_fpath
-
             logging.info("Completed file conversion to: %s", out_fpath)
-            msg = f"Completed '{self.target_format}' conversion."
+            msg = f"Completed '{self.data['target_format']}' conversion."
             self.output.emit(msg)
 
         return err

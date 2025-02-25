@@ -219,29 +219,21 @@ class Worker(QThread):
         file_with_mlx_weights = os.path.join(self.data.model_dir_fpath, self.data.model_str)
 
         try:
-            options = dict(
+            decode_options = dict(
                 language = self.data.language,
-                # default mlx values
-                temperature = (0, 0.2, 0.4, 0.6, 0.8, 1),
-                condition_on_previous_text = True,
-                compression_ratio_threshold = 2.4,
-                no_speech_threshold = 0.6,
-                #
-                #hallucination_silence_threshold = 0.2,
-                #
-                # these do not seem to be implemented yet in mlx:
-                #best_of = 5  # number of independent sample trajectories, if t > 0
-                # 'beam_size' not yet implemented
-                #beam_size = 5  # number of beams in beam search, if t == 0
-                #patience = 0  # patience in beam search (arxiv:2204.05424)
+                task=self.data.task.lower()
             )
-            options_dict = dict(task=self.data.task, **options)
             with contextlib.redirect_stdout(self.stdout), contextlib.redirect_stderr(self.stderr):
                 result = mlx_whisper.transcribe(
                             audio=self.data.filename,
                             path_or_hf_repo=file_with_mlx_weights,
-                            **options_dict,
-                            verbose=True
+                            verbose=True,
+                            temperature = (0, 0.2, 0.4, 0.6, 0.8, 1),
+                            compression_ratio_threshold = 2.4,
+                            no_speech_threshold = 0.6,
+                            condition_on_previous_text = True,
+                            **decode_options
+                            
                         )
         except RuntimeError as e:
             logging.exception("RuntimeError in Worker")
@@ -278,9 +270,7 @@ class WhisperMLXEngine():
 
         if not converted and not already_exist and not err:
             # remove extension for outputfilename
-            the_folder, new_outputfilename = app_utils.split_path_file(filename)
-            if "." in new_outputfilename:
-                new_outputfilename = new_outputfilename.split(".")[0]
+            the_folder, new_outputfilename, _ = app_utils.split_path_file(filename)
             new_outputfilename = os.path.join(the_folder, new_outputfilename)
 
             self.continue_processing(output_folder, filename, outputfilename, name, output_file_extension, mime)

@@ -5,8 +5,8 @@ puremagic==1.28
 validators==0.34.0
 packaging==24.2
 numpy==1.26.4
-scipy==1.15.1
-openai==1.63.0
+scipy==1.15.2
+openai==1.63.2
 openai-whisper==20240930
 faster-whisper==1.1.1
 ping3==4.0.8
@@ -16,20 +16,26 @@ numba==0.61.0
 tqdm==4.67.1
 more-itertools==10.6.0
 tiktoken==0.9.0
-huggingface_hub==0.28.1
+huggingface_hub==0.29.1
 soundfile==0.13.1
 protobuf==3.20.1
-iso639-lang==2.5.1
+iso639-lang==2.6.0
 pysubs2==1.8.0
 filelock==3.17.0
+av==14.1.0
 
 # macOS specific
-mlx==0.23.0 ; platform_system == 'Darwin' and platform.machine == 'arm64'
+mlx==0.23.1 ; platform_system == 'Darwin' and platform.machine == 'arm64'
 mlx-whisper==0.4.2 ; platform_system == 'Darwin' and platform.machine == 'arm64'
+# macOS coreml specific
+#ane_transformers==0.1.3 ; platform_system == 'Darwin'
+#coremltools==8.1 ; platform_system == 'Darwin'
 
 # Windows specific
 plyer==2.1.0; platform_system == 'Windows'
 tokenizers==0.20.3; platform_system == 'Windows'
+# torch with CUDA 12.1
+# pip3 install torch==2.3.1 --index-url https://download.pytorch.org/whl/cu121 ; platform_system == 'Windows'
 
 # Linux specific
 triton>=2.0.0;platform_machine=="x86_64" and sys_platform=="linux" or sys_platform=="linux2"
