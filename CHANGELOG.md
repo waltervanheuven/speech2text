@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 12 April 2025 - version 2.3.2
+
+- Improved file selector dialog.
+- **MLX** updated to 0.24.2.
+- **whisper.cpp** updated to 1.7.5.
+- **PtQt** updated to 6.9.0.
+
 ## 22 February 2025 - version 2.3.1
 
 - Fixed file conversion to wav. Now possible to convert audio/video formats without the need to install FFmpeg.

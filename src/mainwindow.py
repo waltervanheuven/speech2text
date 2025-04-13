@@ -917,22 +917,17 @@ class MainWindow(QMainWindow):
         if self.active_folder is None or not os.path.isdir(self.active_folder):
             self.active_folder = os.path.expanduser("~")
 
-        model = self.settings.value("Whisper/Engine")
+        #model = self.settings.value("Whisper/Engine")
         acceptable_extensions = self.acceptable_extensions()
-
-        selectable_files = ""
+        audio_extensions = []
+        video_extensions = []
         for extension in acceptable_extensions:
-            if extension in [".mp3", ".mp4", ".wav", ".aiff"]:
-                if selectable_files == "":
-                    selectable_files += f"Audio Files *{extension}"
-                else:
-                    selectable_files += f" ;; Audio Files *{extension}"
+            if extension in [".mp3", ".mp4", ".wav", ".aiff", ".m4a", ".flac", ".ogg", ".wma"]:
+                audio_extensions.append(extension)
             else:
-                if selectable_files == "":
-                    selectable_files += f"Video Files *{extension}"
-                else:
-                    selectable_files += f" ;; Video Files *{extension}"
+                video_extensions.append(extension)
 
+        selectable_files = f"Audio Files (*{' *'.join(audio_extensions)}) ;; Video Files (*{' *'.join(video_extensions)})"
         files, selected_filter = QFileDialog.getOpenFileNames(self, caption = "Open Audio/Video File(s)",
             directory = self.active_folder,
             filter = selectable_files, initialFilter=self.selected_filter)
@@ -1441,9 +1436,9 @@ class MainWindow(QMainWindow):
             # whisper.cpp
             if self.whispercpp_engine:
                 if platform.system() == "Windows":
-                    msg = f"{msg}whisper.cpp (v1.7.4, d682e15).<br>"
+                    msg = f"{msg}whisper.cpp (v1.7.5, 9cfcd6c).<br>"
                 else:
-                    msg = f"{msg}whisper.cpp (v1.7.4, d682e15).<br>"
+                    msg = f"{msg}whisper.cpp (v1.7.5, 9cfcd6c).<br>"
 
             # faster-whisper
             if self.faster_whisper_engine:
